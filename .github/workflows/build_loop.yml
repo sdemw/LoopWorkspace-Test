@@ -77,8 +77,8 @@ jobs:
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/loopandlearn/lnl-scripts/main/CustomizationSelect.sh)" \
             low_carb_limit \
             now_line \
-            lnl_icon \
-            profiles
+            lnl_icon 
+           
 
           export SCRIPT_BRANCH=prelim_ai_food
           export PATCH_BRANCH=prelim_ai_food
