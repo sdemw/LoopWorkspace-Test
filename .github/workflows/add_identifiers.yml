@@ -19,8 +19,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Rename app identity for LoopInsights
         run: |
-        sed -i "" 's|MAIN_APP_DISPLAY_NAME = Loop|MAIN_APP_DISPLAY_NAME = LoopInsights|g' Loop/Loop.xcconfig
-        sed -i "" 's|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopkit|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopinsights|g' Loop/Loop.xcconfig
+          sed -i "" 's|MAIN_APP_DISPLAY_NAME = Loop|MAIN_APP_DISPLAY_NAME = LoopInsights|g' Loop/Loop.xcconfig  
+          sed -i "" 's|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopkit|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopinsights|g' Loop/Loop.xcconfig
 
 
       
