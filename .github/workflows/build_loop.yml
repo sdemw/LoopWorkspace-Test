@@ -9,11 +9,9 @@ env:
   TARGET_BRANCH: ${{ github.ref_name }}
 
 jobs:
-
   check_status:
     runs-on: ubuntu-latest
     name: Validate GitHub token
-
     steps:
       - name: Validate GH_PAT
         run: |
@@ -38,7 +36,6 @@ jobs:
       contents: write
 
     steps:
-
       - name: Select Xcode version
         run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
 
@@ -49,7 +46,6 @@ jobs:
           submodules: recursive
           ref: ${{ env.TARGET_BRANCH }}
 
-      # Switch Loop submodule to LoopInsights PR branch
       - name: Checkout LoopInsights branch
         run: |
           cd Loop
@@ -58,13 +54,32 @@ jobs:
           git checkout FETCH_HEAD
           cd ..
 
-      # Rename app so it installs alongside existing Loop
-      - name: Rename app identity
+      - name: Rename app display name only
         run: |
           sed -i "" 's|MAIN_APP_DISPLAY_NAME = Loop|MAIN_APP_DISPLAY_NAME = LoopInsights|g' Loop/Loop.xcconfig
-          sed -i "" 's|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopkit|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopinsights|g' Loop/Loop.xcconfig
 
-      # Patch Fastlane output formatting
+      - name: Customize Loop
+        run: |
+          # Apply any local .patch files from ./patches
+          shopt -s nullglob
+          patches=(./patches/*.patch)
+          if (( ${#patches[@]} )); then
+            git apply "${patches[@]}" --allow-empty -v --whitespace=fix
+          fi
+
+          # Apply standard customizations
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/loopandlearn/lnl-scripts/main/CustomizationSelect.sh)" \
+            low_carb_limit \
+            now_line \
+            lnl_icon \
+            profiles
+
+          # Apply AI food search customization from alternate branch
+          export SCRIPT_BRANCH=prelim_ai_food
+          export PATCH_BRANCH=prelim_ai_food
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/loopandlearn/lnl-scripts/$SCRIPT_BRANCH/CustomizationSelect.sh)" \
+            food_search
+
       - name: Patch Match Tables
         run: |
           TABLE_PRINTER_PATH=$(ruby -e 'puts Gem::Specification.find_by_name("fastlane").gem_dir')/match/lib/match/table_printer.rb
