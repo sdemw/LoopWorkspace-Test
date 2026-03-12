@@ -40,7 +40,7 @@ platform :ios do
     )
 
     previous_build_number = latest_testflight_build_number(
-      app_identifier: "com.#{TEAMID}.loopinsight.Loop",
+      app_identifier: "com.#{TEAMID}.loopinsights.Loop",
       api_key: api_key,
     )
 
@@ -55,12 +55,12 @@ platform :ios do
       type: "appstore",
       git_basic_authorization: Base64.strict_encode64("#{GITHUB_REPOSITORY_OWNER}:#{GH_PAT}"),
       app_identifier: [
-        "com.#{TEAMID}.loopinsight.Loop", 
-        "com.#{TEAMID}.loopinsight.Loop.statuswidget", 
-        "com.#{TEAMID}.loopinsight.Loop.LoopWatch.watchkitextension", 
-        "com.#{TEAMID}.loopinsight.Loop.LoopWatch", 
-        "com.#{TEAMID}.loopinsight.Loop.Loop-Intent-Extension",
-        "com.#{TEAMID}.loopinsight.Loop.LoopWidgetExtension"
+        "com.#{TEAMID}.loopinsights.Loop",
+        "com.#{TEAMID}.loopinsights.Loop.statuswidget",
+        "com.#{TEAMID}.loopinsights.Loop.LoopWatch.watchkitextension",
+        "com.#{TEAMID}.loopinsights.Loop.LoopWatch",
+        "com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension",
+        "com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension"
       ]
     )
 
@@ -70,7 +70,7 @@ platform :ios do
 
     update_code_signing_settings(
       path: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
-      profile_name: mapping["com.#{TEAMID}.loopinsight.Loop"],
+      profile_name: mapping["com.#{TEAMID}.loopinsights.Loop"],
       code_sign_identity: "iPhone Distribution",
       targets: ["Loop"]
     )
@@ -83,35 +83,35 @@ platform :ios do
 
     update_code_signing_settings(
       path: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
-      profile_name: mapping["com.#{TEAMID}.loopinsight.Loop.statuswidget"],
+      profile_name: mapping["com.#{TEAMID}.loopinsights.Loop.statuswidget"],
       code_sign_identity: "iPhone Distribution",
       targets: ["Loop Status Extension"]
     )
     
     update_code_signing_settings(
       path: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
-      profile_name: mapping["com.#{TEAMID}.loopinsight.Loop.LoopWatch.watchkitextension"],
+      profile_name: mapping["com.#{TEAMID}.loopinsights.Loop.LoopWatch.watchkitextension"],
       code_sign_identity: "iPhone Distribution",
       targets: ["WatchApp Extension"]
     )
     
     update_code_signing_settings(
       path: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
-      profile_name: mapping["com.#{TEAMID}.loopinsight.Loop.LoopWatch"],
+      profile_name: mapping["com.#{TEAMID}.loopinsights.Loop.LoopWatch"],
       code_sign_identity: "iPhone Distribution",
       targets: ["WatchApp"]
     )
     
     update_code_signing_settings(
       path: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
-      profile_name: mapping["com.#{TEAMID}.loopinsight.Loop.Loop-Intent-Extension"],
+      profile_name: mapping["com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension"],
       code_sign_identity: "iPhone Distribution",
       targets: ["Loop Intent Extension"]
     )
     
     update_code_signing_settings(
       path: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
-      profile_name: mapping["com.#{TEAMID}.loopinsight.Loop.LoopWidgetExtension"],
+      profile_name: mapping["com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension"],
       code_sign_identity: "iPhone Distribution",
       targets: ["Loop Widget Extension"]
     )
@@ -160,9 +160,9 @@ platform :ios do
 
     def configure_bundle_id(name, identifier, capabilities)
       bundle_id = Spaceship::ConnectAPI::BundleId.find(identifier) || Spaceship::ConnectAPI::BundleId.create(
-        name:       name,
+        name: name,
         identifier: identifier,
-        platform:   "IOS"
+        platform: "IOS"
       )
       existing = bundle_id.get_capabilities.map(&:capability_type)
       capabilities.reject { |c| existing.include?(c) }.each do |cap|
@@ -170,7 +170,7 @@ platform :ios do
       end
     end
 
-    configure_bundle_id("Loop", "com.#{TEAMID}.loopinsight.Loop", [
+    configure_bundle_id("Loop", "com.#{TEAMID}.loopinsights.Loop", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS,
       Spaceship::ConnectAPI::BundleIdCapability::Type::HEALTHKIT,
       Spaceship::ConnectAPI::BundleIdCapability::Type::PUSH_NOTIFICATIONS,
@@ -178,25 +178,24 @@ platform :ios do
       Spaceship::ConnectAPI::BundleIdCapability::Type::NFC_TAG_READING
     ])
 
-    configure_bundle_id("Loop Intent Extension", "com.#{TEAMID}.loopinsight.Loop.Loop-Intent-Extension", [
+    configure_bundle_id("Loop Intent Extension", "com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
     ])
 
-    configure_bundle_id("Loop Status Extension", "com.#{TEAMID}.loopinsight.Loop.statuswidget", [
+    configure_bundle_id("Loop Status Extension", "com.#{TEAMID}.loopinsights.Loop.statuswidget", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
     ])
 
-    configure_bundle_id("WatchApp", "com.#{TEAMID}.loopinsight.Loop.LoopWatch", [])
+    configure_bundle_id("WatchApp", "com.#{TEAMID}.loopinsights.Loop.LoopWatch", [])
 
-    configure_bundle_id("WatchApp Extension", "com.#{TEAMID}.loopinsight.Loop.LoopWatch.watchkitextension", [
+    configure_bundle_id("WatchApp Extension", "com.#{TEAMID}.loopinsights.Loop.LoopWatch.watchkitextension", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::HEALTHKIT,
       Spaceship::ConnectAPI::BundleIdCapability::Type::SIRIKIT
     ])
 
-    configure_bundle_id("Loop Widget Extension", "com.#{TEAMID}.loopinsight.Loop.LoopWidgetExtension", [
+    configure_bundle_id("Loop Widget Extension", "com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
     ])
-    
   end
 
   desc "Provision Certificates"
@@ -216,12 +215,12 @@ platform :ios do
       verbose: true,
       git_basic_authorization: Base64.strict_encode64("#{GITHUB_REPOSITORY_OWNER}:#{GH_PAT}"),
       app_identifier: [
-        "com.#{TEAMID}.loopinsight.Loop", 
-        "com.#{TEAMID}.loopinsight.Loop.statuswidget", 
-        "com.#{TEAMID}.loopinsight.Loop.LoopWatch.watchkitextension", 
-        "com.#{TEAMID}.loopinsight.Loop.LoopWatch", 
-        "com.#{TEAMID}.loopinsight.Loop.Loop-Intent-Extension",
-        "com.#{TEAMID}.loopinsight.Loop.LoopWidgetExtension",
+        "com.#{TEAMID}.loopinsights.Loop",
+        "com.#{TEAMID}.loopinsights.Loop.statuswidget",
+        "com.#{TEAMID}.loopinsights.Loop.LoopWatch.watchkitextension",
+        "com.#{TEAMID}.loopinsights.Loop.LoopWatch",
+        "com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension",
+        "com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension",
       ]
     )
   end
@@ -241,14 +240,13 @@ platform :ios do
       bundle_id = Spaceship::ConnectAPI::BundleId.find(identifier)
     end
 
-    find_bundle_id("com.#{TEAMID}.loopinsight.Loop")
+    find_bundle_id("com.#{TEAMID}.loopinsights.Loop")
 
     match(
       type: "appstore",
       git_basic_authorization: Base64.strict_encode64("#{GITHUB_REPOSITORY_OWNER}:#{GH_PAT}"),
       app_identifier: [],
     )
-
   end
   
   desc "Nuke Certs"
@@ -275,28 +273,21 @@ platform :ios do
     setup_ci if ENV['CI']
     ENV["MATCH_READONLY"] = false.to_s
 
-    # Authenticate using App Store Connect API Key
     api_key = app_store_connect_api_key(
       key_id: ENV["FASTLANE_KEY_ID"],
       issuer_id: ENV["FASTLANE_ISSUER_ID"],
-      key_content: ENV["FASTLANE_KEY"] # Ensure valid key content
+      key_content: ENV["FASTLANE_KEY"]
     )
 
-    # Initialize flag to track if renewal of certificates is needed
     new_certificate_needed = false
 
-    # Fetch all certificates
     certificates = Spaceship::ConnectAPI::Certificate.all
-
-    # Filter for Distribution Certificates
     distribution_certs = certificates.select { |cert| cert.certificate_type == "DISTRIBUTION" }
 
-    # Handle case where no distribution certificates are found
     if distribution_certs.empty?
       puts "No Distribution certificates found! Triggering action to create certificate."
       new_certificate_needed = true
     else
-      # Check for expiration
       distribution_certs.each do |cert|
         expiration_date = Time.parse(cert.expiration_date)
 
@@ -311,11 +302,9 @@ platform :ios do
       end
     end
 
-    # Write result to new_certificate_needed.txt
     file_path = File.expand_path('new_certificate_needed.txt')
-    File.write(file_path, new_certificate_needed ? 'true' : 'false')  
+    File.write(file_path, new_certificate_needed ? 'true' : 'false')
 
-    # Log the absolute path and contents of the new_certificate_needed.txt file
     puts ""
     puts "Absolute path of new_certificate_needed.txt: #{file_path}"
     new_certificate_needed_content = File.read(file_path)
