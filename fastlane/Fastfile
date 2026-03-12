@@ -1,5 +1,14 @@
-# This file contains the fastlane.tools configuration  
+# This file contains the fastlane.tools configuration
 # You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
 
 default_platform(:ios)
 
@@ -16,12 +25,11 @@ DEVICE_ID = ENV["DEVICE_ID"]
 ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "120"
 
 platform :ios do
-
   desc "Build Loop"
   lane :build_loop do
-    setup_ci if ENV['CI']
+    setup_ci if ENV["CI"]
 
-    # Critical fix: allow profiles to be created during CI
+    # Allow CI build lane to repair/create profiles if needed
     ENV["MATCH_READONLY"] = false.to_s
 
     update_project_team(
@@ -125,10 +133,9 @@ platform :ios do
 
     copy_artifacts(
       target_path: "artifacts",
-      artifacts: [".mobileprovision", ".ipa", "*.dSYM.zip"]
+      artifacts: ["*.mobileprovision", "*.ipa", "*.dSYM.zip"]
     )
   end
-
 
   desc "Push to TestFlight"
   lane :release do
@@ -146,10 +153,9 @@ platform :ios do
     )
   end
 
-
   desc "Provision Identifiers and Certificates"
   lane :identifiers do
-    setup_ci if ENV['CI']
+    setup_ci if ENV["CI"]
     ENV["MATCH_READONLY"] = false.to_s
 
     app_store_connect_api_key(
@@ -164,15 +170,13 @@ platform :ios do
         identifier: identifier,
         platform: "IOS"
       )
-
       existing = bundle_id.get_capabilities.map(&:capability_type)
-
       capabilities.reject { |c| existing.include?(c) }.each do |cap|
         bundle_id.create_capability(cap)
       end
     end
 
-    configure_bundle_id("Loop","com.#{TEAMID}.loopinsights.Loop",[
+    configure_bundle_id("Loop", "com.#{TEAMID}.loopinsights.Loop", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS,
       Spaceship::ConnectAPI::BundleIdCapability::Type::HEALTHKIT,
       Spaceship::ConnectAPI::BundleIdCapability::Type::PUSH_NOTIFICATIONS,
@@ -180,30 +184,29 @@ platform :ios do
       Spaceship::ConnectAPI::BundleIdCapability::Type::NFC_TAG_READING
     ])
 
-    configure_bundle_id("Loop Intent Extension","com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension",[
+    configure_bundle_id("Loop Intent Extension", "com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
     ])
 
-    configure_bundle_id("Loop Status Extension","com.#{TEAMID}.loopinsights.Loop.statuswidget",[
+    configure_bundle_id("Loop Status Extension", "com.#{TEAMID}.loopinsights.Loop.statuswidget", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
     ])
 
-    configure_bundle_id("WatchApp","com.#{TEAMID}.loopinsights.Loop.LoopWatch",[])
+    configure_bundle_id("WatchApp", "com.#{TEAMID}.loopinsights.Loop.LoopWatch", [])
 
-    configure_bundle_id("WatchApp Extension","com.#{TEAMID}.loopinsights.Loop.LoopWatch.watchkitextension",[
+    configure_bundle_id("WatchApp Extension", "com.#{TEAMID}.loopinsights.Loop.LoopWatch.watchkitextension", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::HEALTHKIT,
       Spaceship::ConnectAPI::BundleIdCapability::Type::SIRIKIT
     ])
 
-    configure_bundle_id("Loop Widget Extension","com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension",[
+    configure_bundle_id("Loop Widget Extension", "com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension", [
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
     ])
   end
 
-
   desc "Provision Certificates"
   lane :certs do
-    setup_ci if ENV['CI']
+    setup_ci if ENV["CI"]
     ENV["MATCH_READONLY"] = false.to_s
 
     app_store_connect_api_key(
@@ -228,10 +231,33 @@ platform :ios do
     )
   end
 
+  desc "Validate Secrets"
+  lane :validate_secrets do
+    setup_ci if ENV["CI"]
+    ENV["MATCH_READONLY"] = true.to_s
+
+    app_store_connect_api_key(
+      key_id: "#{FASTLANE_KEY_ID}",
+      issuer_id: "#{FASTLANE_ISSUER_ID}",
+      key_content: "#{FASTLANE_KEY}"
+    )
+
+    def find_bundle_id(identifier)
+      bundle_id = Spaceship::ConnectAPI::BundleId.find(identifier)
+    end
+
+    find_bundle_id("com.#{TEAMID}.loopinsights.Loop")
+
+    match(
+      type: "appstore",
+      git_basic_authorization: Base64.strict_encode64("#{GITHUB_REPOSITORY_OWNER}:#{GH_PAT}"),
+      app_identifier: []
+    )
+  end
 
   desc "Nuke Certs"
   lane :nuke_certs do
-    setup_ci if ENV['CI']
+    setup_ci if ENV["CI"]
     ENV["MATCH_READONLY"] = false.to_s
 
     app_store_connect_api_key(
@@ -248,4 +274,46 @@ platform :ios do
     )
   end
 
+  desc "Check Certificates and Trigger Workflow for Expired or Missing Certificates"
+  lane :check_and_renew_certificates do
+    setup_ci if ENV["CI"]
+    ENV["MATCH_READONLY"] = false.to_s
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV["FASTLANE_KEY_ID"],
+      issuer_id: ENV["FASTLANE_ISSUER_ID"],
+      key_content: ENV["FASTLANE_KEY"]
+    )
+
+    new_certificate_needed = false
+
+    certificates = Spaceship::ConnectAPI::Certificate.all
+    distribution_certs = certificates.select { |cert| cert.certificate_type == "DISTRIBUTION" }
+
+    if distribution_certs.empty?
+      puts "No Distribution certificates found! Triggering action to create certificate."
+      new_certificate_needed = true
+    else
+      distribution_certs.each do |cert|
+        expiration_date = Time.parse(cert.expiration_date)
+
+        puts "Current Distribution Certificate: #{cert.id}, Expiration date: #{expiration_date}"
+
+        if expiration_date < Time.now
+          puts "Distribution Certificate #{cert.id} is expired! Triggering action to renew certificate."
+          new_certificate_needed = true
+        else
+          puts "Distribution certificate #{cert.id} is valid. No action required."
+        end
+      end
+    end
+
+    file_path = File.expand_path("new_certificate_needed.txt")
+    File.write(file_path, new_certificate_needed ? "true" : "false")
+
+    puts ""
+    puts "Absolute path of new_certificate_needed.txt: #{file_path}"
+    new_certificate_needed_content = File.read(file_path)
+    puts "Certificate creation or renewal needed: #{new_certificate_needed_content}"
+  end
 end
