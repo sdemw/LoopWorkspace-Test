@@ -1,5 +1,6 @@
 name: 4. Build Loop
 run-name: Build Loop (${{ github.ref_name }})
+
 on:
   workflow_dispatch:
   schedule:
@@ -9,9 +10,9 @@ on:
 
 env:
   GH_PAT: ${{ secrets.GH_PAT }}
-  UPSTREAM_REPO: TaylorJPatterson/Loop-AllFeatures
-  UPSTREAM_BRANCH: ${{ github.ref_name }} # branch on upstream repository to sync from (replace with specific branch name if needed)
-  TARGET_BRANCH: ${{ github.ref_name }} # target branch on fork to be kept in sync
+  UPSTREAM_REPO: LoopKit/LoopWorkspace
+  UPSTREAM_BRANCH: dev
+  TARGET_BRANCH: ${{ github.ref_name }}
 
 jobs:
   # use a single runner for these sequential steps
@@ -96,7 +97,7 @@ jobs:
 
       # This syncs any target branch to upstream branch of the same name
       - name: Sync upstream changes
-        if: | # do not run the upstream sync action on the upstream repository
+        if: |
           steps.workflow-permission.outputs.has_permission == 'true' &&
           vars.SCHEDULED_SYNC != 'false' && github.repository_owner != 'LoopKit'
         id: sync
@@ -108,7 +109,6 @@ jobs:
           upstream_sync_branch: ${{ env.UPSTREAM_BRANCH }}
           upstream_sync_repo: ${{ env.UPSTREAM_REPO }}
 
-      # Display a sample message based on the sync output var 'has_new_commits'
       - name: New commits found
         if: |
           steps.workflow-permission.outputs.has_permission == 'true' &&
@@ -133,10 +133,8 @@ jobs:
           echo "### :calendar: Scheduled Sync and Build Disabled :mobile_phone_off:" >> $GITHUB_STEP_SUMMARY
           echo "You have not yet configured the scheduled sync and build for Loop's browser build." >> $GITHUB_STEP_SUMMARY
           echo "Synchronizing your fork of <code>LoopWorkspace</code> with the upstream repository <code>LoopKit/LoopWorkspace</code> will be skipped." >> $GITHUB_STEP_SUMMARY
-          echo "If you want to enable automatic builds and updates for your Loop, please follow the instructions \
-                under the following path <code>LoopWorkspace/fastlane/testflight.md</code>." >> $GITHUB_STEP_SUMMARY
+          echo "If you want to enable automatic builds and updates for your Loop, please follow the instructions under the following path <code>LoopWorkspace/fastlane/testflight.md</code>." >> $GITHUB_STEP_SUMMARY
 
-      # Set a logic flag if this is the second instance of this day-of-week in this month
       - name: Check if this is the second time this day-of-week happens this month
         id: date-check
         run: |
@@ -148,31 +146,27 @@ jobs:
             echo "is_second_instance=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # Checks if Distribution certificate is present and valid, optionally nukes and
-  # creates new certs if the repository variable ENABLE_NUKE_CERTS == 'true'
-  # only run if a build is planned
   check_certs:
-      needs: [check_status]
-      name: Check certificates
-      uses: ./.github/workflows/create_certs.yml
-      secrets: inherit
-      if: |
-        github.event_name == 'workflow_dispatch' ||
-          (vars.SCHEDULED_BUILD != 'false' && needs.check_status.outputs.IS_SECOND_IN_MONTH == 'true') ||
-          (vars.SCHEDULED_SYNC != 'false' && needs.check_status.outputs.NEW_COMMITS == 'true' )
+    needs: [check_status]
+    name: Check certificates
+    uses: ./.github/workflows/create_certs.yml
+    secrets: inherit
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+        (vars.SCHEDULED_BUILD != 'false' && needs.check_status.outputs.IS_SECOND_IN_MONTH == 'true') ||
+        (vars.SCHEDULED_SYNC != 'false' && needs.check_status.outputs.NEW_COMMITS == 'true' )
 
-  # Builds Loop
   build:
     name: Build
     needs: [check_certs, check_status]
     runs-on: macos-15
     permissions:
       contents: write
-    if:
-      | # builds with manual start; if scheduled: once a month or when new commits are found
+    if: |
       github.event_name == 'workflow_dispatch' ||
         (vars.SCHEDULED_BUILD != 'false' && needs.check_status.outputs.IS_SECOND_IN_MONTH == 'true') ||
         (vars.SCHEDULED_SYNC != 'false' && needs.check_status.outputs.NEW_COMMITS == 'true' )
+
     steps:
       - name: Select Xcode version
         run: "sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer"
@@ -184,35 +178,19 @@ jobs:
           submodules: recursive
           ref: ${{ env.TARGET_BRANCH }}
 
-      # Customize Loop: Download and apply patches
       - name: Customize Loop
         run: |
 
           # LoopWorkspace patches
-          # -applies any patches located in the LoopWorkspace/patches/ directory
           if $(ls ./patches/* &> /dev/null); then
           git apply ./patches/* --allow-empty -v --whitespace=fix
           fi
 
           # Submodule Loop patches:
-          # Template for customizing submodule Loop (changes Loop app name to "CustomLoop")
-          # Remove the "#" sign from the beginning of the line below to activate:
-          #curl https://github.com/loopnlearn/Loop/commit/d206432b024279ef710df462b20bd464cd9682d4.patch | git apply --directory=Loop -v --whitespace=fix
+          curl -L https://github.com/LoopKit/Loop/pull/2405.patch | git apply --directory=Loop -v --whitespace=fix
           sed -i "" 's|MAIN_APP_DISPLAY_NAME = Loop|MAIN_APP_DISPLAY_NAME = LoopInsights|g' Loop/Loop.xcconfig
           sed -i "" 's|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopkit|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopinsights|g' Loop/Loop.xcconfig
-          # Submodule LoopKit patches:
-          # General template for customizing submodule LoopKit 
-          # Copy url from a GitHub commit or pull request and insert below, and remove the "#" sign from the beginning of the line to activate:
-          #curl url_to_github_commit.patch | git apply --directory=LoopKit -v --whitespace=fix
 
-          # Submodule xxxxx patches:
-
-          # Add patches for customization of additional submodules by following the templates above, 
-          # and make sure to specify the submodule by setting "--directory=(submodule_name)".
-          # Several patches may be added per submodule.
-          # Adding comments (#) may be useful to easily tell the individual patches apart.
-
-      # Patch Fastlane Match to not print tables
       - name: Patch Match Tables
         run: |
           TABLE_PRINTER_PATH=$(ruby -e 'puts Gem::Specification.find_by_name("fastlane").gem_dir')/match/lib/match/table_printer.rb
@@ -223,15 +201,12 @@ jobs:
             exit 1
           fi
 
-      # Install project dependencies
       - name: Install Project Dependencies
         run: bundle install
 
-      # Sync the GitHub runner clock with the Windows time server (workaround as suggested in https://github.com/actions/runner/issues/2996)
       - name: Sync clock
         run: sudo sntp -sS time.windows.com
 
-      # Build signed Loop IPA file
       - name: Fastlane Build & Archive
         run: bundle exec fastlane build_loop
         env:
@@ -242,7 +217,6 @@ jobs:
           FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
 
-      # Upload to TestFlight
       - name: Fastlane upload to TestFlight
         run: bundle exec fastlane release
         env:
@@ -253,7 +227,6 @@ jobs:
           FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
 
-      # Upload Build artifacts
       - name: Upload build log, IPA and Symbol artifacts
         if: always()
         uses: actions/upload-artifact@v4
