@@ -61,10 +61,13 @@ jobs:
       - name: Sync clock
         run: sudo sntp -sS time.windows.com
 
-      - name: Check and create or update Distribution certificate and profiles if needed
+      - name: Create identifiers and provisioning profiles
         run: |
+          set -e
+          echo "Running Fastlane identifiers lane..."
+          bundle exec fastlane identifiers
           echo "Running Fastlane certs lane..."
-          bundle exec fastlane certs || true
+          bundle exec fastlane certs
 
       - name: Check Distribution certificate and launch Nuke certificates if needed
         run: bundle exec fastlane check_and_renew_certificates
@@ -136,9 +139,10 @@ jobs:
           set -e
           bundle exec fastlane nuke_certs
 
-      - name: Recreate Distribution certificate after nuking
+      - name: Recreate identifiers and Distribution certificate after nuking
         run: |
           set -e
+          bundle exec fastlane identifiers
           bundle exec fastlane certs
 
       - name: Add success annotations for nuke and certificate recreation
