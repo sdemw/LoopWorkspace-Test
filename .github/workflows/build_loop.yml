@@ -67,6 +67,13 @@ jobs:
             git apply "${patches[@]}" --allow-empty -v --whitespace=fix
           fi
 
+          # Make sure the customization script can find a folder named LoopWorkspace
+          CURRENT_DIR="$(pwd)"
+          PARENT_DIR="$(dirname "$CURRENT_DIR")"
+          ln -sfn "$CURRENT_DIR" "$PARENT_DIR/LoopWorkspace"
+
+          cd "$PARENT_DIR/LoopWorkspace"
+
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/loopandlearn/lnl-scripts/main/CustomizationSelect.sh)" \
             low_carb_limit \
             now_line \
