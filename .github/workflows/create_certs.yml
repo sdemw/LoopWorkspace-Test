@@ -26,19 +26,25 @@ jobs:
       new_certificate_needed: ${{ steps.set_output.outputs.new_certificate_needed }}
 
     steps:
-      # Check out repo AND submodules
       - name: Checkout Repo
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
           submodules: recursive
 
+      - name: Checkout LoopInsights branch
+        run: |
+          cd Loop
+          git remote set-url origin https://github.com/TaylorJPatterson/Loop.git
+          git fetch origin feat/LoopInsights
+          git checkout FETCH_HEAD
+          cd ..
+
       - name: Rename app identity for LoopInsights
         run: |
           sed -i "" 's|MAIN_APP_DISPLAY_NAME = Loop|MAIN_APP_DISPLAY_NAME = LoopInsights|g' Loop/Loop.xcconfig
           sed -i "" 's|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopkit|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopinsights|g' Loop/Loop.xcconfig
 
-      # Patch Fastlane Match to not print tables
       - name: Patch Match Tables
         run: |
           TABLE_PRINTER_PATH=$(ruby -e 'puts Gem::Specification.find_by_name("fastlane").gem_dir')/match/lib/match/table_printer.rb
@@ -49,15 +55,12 @@ jobs:
             exit 1
           fi
 
-      # Install project dependencies
       - name: Install Project Dependencies
         run: bundle install
 
-      # Sync the GitHub runner clock with the Windows time server
       - name: Sync clock
         run: sudo sntp -sS time.windows.com
 
-      # Create or update Distribution certificate and provisioning profiles
       - name: Check and create or update Distribution certificate and profiles if needed
         run: |
           echo "Running Fastlane certs lane..."
@@ -96,7 +99,6 @@ jobs:
             echo "::warning::‼️ Nuking of certificates was forced because the repository variable FORCE_NUKE_CERTS is set to 'true'."
           fi
 
-  # Nuke Certs if needed
   nuke_certs:
     name: Nuke certificates
     needs: [validate, create_certs]
@@ -112,6 +114,14 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT }}
           submodules: recursive
+
+      - name: Checkout LoopInsights branch
+        run: |
+          cd Loop
+          git remote set-url origin https://github.com/TaylorJPatterson/Loop.git
+          git fetch origin feat/LoopInsights
+          git checkout FETCH_HEAD
+          cd ..
 
       - name: Rename app identity for LoopInsights
         run: |
