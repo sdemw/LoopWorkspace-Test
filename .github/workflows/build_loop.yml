@@ -67,23 +67,21 @@ jobs:
             git apply "${patches[@]}" --allow-empty -v --whitespace=fix
           fi
 
-          # Make sure the customization script can find a folder named LoopWorkspace
           CURRENT_DIR="$(pwd)"
           PARENT_DIR="$(dirname "$CURRENT_DIR")"
-          ln -sfn "$CURRENT_DIR" "$PARENT_DIR/LoopWorkspace"
+
+          if [ ! -e "$PARENT_DIR/LoopWorkspace" ]; then
+            ln -s "$CURRENT_DIR" "$PARENT_DIR/LoopWorkspace"
+          fi
 
           cd "$PARENT_DIR/LoopWorkspace"
+          pwd
+          ls -la
 
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/loopandlearn/lnl-scripts/main/CustomizationSelect.sh)" \
             low_carb_limit \
             now_line \
-            lnl_icon 
-           
-
-          export SCRIPT_BRANCH=prelim_ai_food
-          export PATCH_BRANCH=prelim_ai_food
-          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/loopandlearn/lnl-scripts/$SCRIPT_BRANCH/CustomizationSelect.sh)" \
-            food_search
+            lnl_icon
 
       - name: Patch Match Tables
         run: |
