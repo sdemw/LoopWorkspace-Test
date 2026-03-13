@@ -58,7 +58,7 @@ platform :ios do
 
     # Ensure app group exists in App Store Connect before regenerating provisioning profiles.
     # This must run here because build_loop does not call the identifiers lane.
-    app_group_identifier = "group.com.#{TEAMID}.loopinsights"
+    app_group_identifier = "group.com.#{TEAMID}.loopinsights.LoopGroup"
     app_group = Spaceship::ConnectAPI::AppGroup.all.find { |g| g.identifier == app_group_identifier }
     if app_group.nil?
       app_group = Spaceship::ConnectAPI::AppGroup.create(
@@ -230,7 +230,7 @@ platform :ios do
     ])
 
     # Create app group if it doesn't exist and associate with all bundle IDs that use APP_GROUPS
-    app_group_identifier = "group.com.#{TEAMID}.loopinsights"
+    app_group_identifier = "group.com.#{TEAMID}.loopinsights.LoopGroup"
     app_group = Spaceship::ConnectAPI::AppGroup.all.find { |g| g.identifier == app_group_identifier }
     if app_group.nil?
       app_group = Spaceship::ConnectAPI::AppGroup.create(

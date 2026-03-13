@@ -4,7 +4,7 @@
 // MAIN_APP_BUNDLE_IDENTIFIER = com.myname.loop
 
 // App Group identifier for LoopInsights - must match what is registered in App Store Connect
-APP_GROUP_IDENTIFIER = group.com.$(DEVELOPMENT_TEAM).loopinsights
+APP_GROUP_IDENTIFIER = group.com.$(DEVELOPMENT_TEAM).loopinsights.LoopGroup
 
 // Customize this to change the app name displayed
 //MAIN_APP_DISPLAY_NAME = Loop
