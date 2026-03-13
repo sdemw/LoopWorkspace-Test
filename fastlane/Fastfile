@@ -204,6 +204,110 @@ platform :ios do
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
     ])
 
+    # Create the app group in the Developer Portal and associate it with the
+    # bundle IDs that declare APP_GROUPS. Tries the typed AppGroup class first
+    # (available in some fastlane versions), then falls back to raw ConnectAPI
+    # HTTP calls. If both fail, prints manual-setup instructions and continues.
+    app_group_identifier = "group.com.#{TEAMID}.loopinsights.LoopGroup"
+    app_group_ids_to_associate = [
+      "com.#{TEAMID}.loopinsights.Loop",
+      "com.#{TEAMID}.loopinsights.Loop.statuswidget",
+      "com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension",
+      "com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension"
+    ]
+
+    app_group_id = nil
+
+    # --- Attempt 1: named AppGroup class ---
+    begin
+      all_groups = Spaceship::ConnectAPI::AppGroup.all
+      existing = all_groups.find { |g| g.identifier == app_group_identifier }
+      if existing
+        app_group_id = existing.id
+        UI.message("Found existing app group #{app_group_identifier} (#{app_group_id})")
+      else
+        new_group = Spaceship::ConnectAPI::AppGroup.create(
+          name: "LoopInsights Group",
+          identifier: app_group_identifier
+        )
+        app_group_id = new_group.id
+        UI.success("Created app group #{app_group_identifier} (#{app_group_id})")
+      end
+    rescue NameError
+      # AppGroup class not present in this fastlane version – try raw API
+      UI.important("Spaceship::ConnectAPI::AppGroup not available; trying raw API...")
+      begin
+        list_resp = Spaceship::ConnectAPI.get(
+          "appGroups",
+          filter: { "groupIdentifier" => app_group_identifier }
+        )
+        data = list_resp["data"] || []
+        if data.empty?
+          create_resp = Spaceship::ConnectAPI.post(
+            "appGroups",
+            body: {
+              "data" => {
+                "type" => "appGroups",
+                "attributes" => {
+                  "name" => "LoopInsights Group",
+                  "groupIdentifier" => app_group_identifier
+                }
+              }
+            }
+          )
+          app_group_id = (create_resp["data"] || {})["id"]
+          UI.success("Created app group via raw API: #{app_group_identifier}")
+        else
+          app_group_id = data.first["id"]
+          UI.message("Found existing app group via raw API: #{app_group_identifier}")
+        end
+      rescue => raw_err
+        UI.important("Raw API call also failed: #{raw_err.message}")
+      end
+    rescue => err
+      UI.important("AppGroup setup failed: #{err.message}")
+    end
+
+    if app_group_id
+      app_group_ids_to_associate.each do |bid|
+        begin
+          bundle = Spaceship::ConnectAPI::BundleId.find(bid)
+          next unless bundle
+          begin
+            existing_groups = bundle.get_app_groups.map(&:identifier)
+          rescue
+            existing_groups = []
+          end
+          unless existing_groups.include?(app_group_identifier)
+            begin
+              bundle.associate_app_groups([app_group_id])
+              UI.success("Associated #{app_group_identifier} with #{bid}")
+            rescue NoMethodError
+              Spaceship::ConnectAPI.post(
+                "bundleIds/#{bundle.id}/relationships/appGroups",
+                body: { "data" => [{ "type" => "appGroups", "id" => app_group_id }] }
+              )
+              UI.success("Associated #{app_group_identifier} with #{bid} (raw API)")
+            end
+          else
+            UI.message("#{bid} already has app group #{app_group_identifier}")
+          end
+        rescue => e
+          UI.important("Could not associate app group with #{bid}: #{e.message}")
+        end
+      end
+    else
+      UI.important("")
+      UI.important("⚠️  Could not automatically create/associate the app group.")
+      UI.important("   Please manually perform the following steps in the Apple Developer Portal:")
+      UI.important("   1. Go to Certificates, Identifiers & Profiles → Identifiers → App Groups")
+      UI.important("   2. Create a new App Group with identifier: #{app_group_identifier}")
+      UI.important("   3. Edit each of these bundle IDs and add the app group above:")
+      app_group_ids_to_associate.each { |bid| UI.important("      - #{bid}") }
+      UI.important("   Then re-run the identifiers and build_loop workflows.")
+      UI.important("")
+    end
+
   end
 
   desc "Provision Certificates"
