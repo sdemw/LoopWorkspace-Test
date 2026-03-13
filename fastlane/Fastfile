@@ -255,22 +255,22 @@ platform :ios do
     app_group_id = nil
 
     # --- Step 1a: look for the app group via existing bundle ID associations ---
-    # This works even when the standalone appGroups endpoint requires higher permissions.
+    # Uses the HTTP API directly (bundleIds/{id}/appGroups) to avoid spaceship
+    # version quirks with get_app_groups returning empty results.
     UI.message("Checking existing bundle ID associations for app group '#{app_group_identifier}'...")
     app_group_ids_to_associate.each do |bid|
       break if app_group_id
       begin
         bundle = Spaceship::ConnectAPI::BundleId.find(bid)
         next unless bundle
-        groups = bundle.get_app_groups rescue []
-        matching = groups.find do |g|
-          # Spaceship may expose the identifier as :group_identifier or :identifier
-          id_value = g.respond_to?(:group_identifier) ? g.group_identifier : nil
-          id_value ||= g.respond_to?(:identifier) ? g.identifier : nil
-          id_value == app_group_identifier
+        status, resp = asc_api_request(:get, "bundleIds/#{bundle.id}/appGroups")
+        UI.message("GET bundleIds/#{bundle.id}/appGroups → HTTP #{status}, count: #{(resp['data'] || []).size}")
+        data = resp["data"] || []
+        matching = data.find do |g|
+          (g.dig("attributes", "identifier") || g.dig("attributes", "groupIdentifier")) == app_group_identifier
         end
         if matching
-          app_group_id = matching.id
+          app_group_id = matching["id"]
           UI.message("Found app group '#{app_group_identifier}' on #{bid}: id=#{app_group_id}")
         end
       rescue => e
@@ -357,10 +357,9 @@ platform :ios do
 
         already_associated = false
         begin
-          already_associated = bundle.get_app_groups.any? do |g|
-            id_value = g.respond_to?(:group_identifier) ? g.group_identifier : nil
-            id_value ||= g.respond_to?(:identifier) ? g.identifier : nil
-            id_value == app_group_identifier
+          _, assoc_resp = asc_api_request(:get, "bundleIds/#{bundle.id}/appGroups")
+          already_associated = (assoc_resp["data"] || []).any? do |g|
+            (g.dig("attributes", "identifier") || g.dig("attributes", "groupIdentifier")) == app_group_identifier
           end
         rescue => e
           UI.important("Could not check app groups for #{bid}: #{e.message}")
