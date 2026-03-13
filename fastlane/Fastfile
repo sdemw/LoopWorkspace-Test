@@ -56,31 +56,6 @@ platform :ios do
       build_number: current_build_number
     )
 
-    # Ensure app group exists in App Store Connect before regenerating provisioning profiles.
-    # This must run here because build_loop does not call the identifiers lane.
-    app_group_identifier = "group.com.#{TEAMID}.loopinsights.LoopGroup"
-    app_group = Spaceship::ConnectAPI::AppGroup.all.find { |g| g.identifier == app_group_identifier }
-    if app_group.nil?
-      app_group = Spaceship::ConnectAPI::AppGroup.create(
-        name: "LoopInsights Group",
-        identifier: app_group_identifier
-      )
-    end
-    [
-      "com.#{TEAMID}.loopinsights.Loop",
-      "com.#{TEAMID}.loopinsights.Loop.statuswidget",
-      "com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension",
-      "com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension"
-    ].each do |bid|
-      bundle = Spaceship::ConnectAPI::BundleId.find(bid)
-      if bundle
-        existing_groups = bundle.get_app_groups.map(&:identifier) rescue []
-        unless existing_groups.include?(app_group_identifier)
-          bundle.associate_app_groups([app_group.id])
-        end
-      end
-    end
-
     match(
       type: "appstore",
       readonly: false,
@@ -229,30 +204,6 @@ platform :ios do
       Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
     ])
 
-    # Create app group if it doesn't exist and associate with all bundle IDs that use APP_GROUPS
-    app_group_identifier = "group.com.#{TEAMID}.loopinsights.LoopGroup"
-    app_group = Spaceship::ConnectAPI::AppGroup.all.find { |g| g.identifier == app_group_identifier }
-    if app_group.nil?
-      app_group = Spaceship::ConnectAPI::AppGroup.create(
-        name: "LoopInsights Group",
-        identifier: app_group_identifier
-      )
-    end
-
-    [
-      "com.#{TEAMID}.loopinsights.Loop",
-      "com.#{TEAMID}.loopinsights.Loop.statuswidget",
-      "com.#{TEAMID}.loopinsights.Loop.Loop-Intent-Extension",
-      "com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension"
-    ].each do |bid|
-      bundle = Spaceship::ConnectAPI::BundleId.find(bid)
-      if bundle
-        existing_groups = bundle.get_app_groups.map(&:identifier) rescue []
-        unless existing_groups.include?(app_group_identifier)
-          bundle.associate_app_groups([app_group.id])
-        end
-      end
-    end
   end
 
   desc "Provision Certificates"
