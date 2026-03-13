@@ -205,9 +205,7 @@ platform :ios do
     ])
 
     # Create the app group in the Developer Portal and associate it with the
-    # bundle IDs that declare APP_GROUPS. Tries the typed AppGroup class first
-    # (available in some fastlane versions), then falls back to raw ConnectAPI
-    # HTTP calls. If both fail, prints manual-setup instructions and continues.
+    # bundle IDs that declare APP_GROUPS.
     app_group_identifier = "group.com.#{TEAMID}.loopinsights.LoopGroup"
     app_group_ids_to_associate = [
       "com.#{TEAMID}.loopinsights.Loop",
@@ -216,10 +214,48 @@ platform :ios do
       "com.#{TEAMID}.loopinsights.Loop.LoopWidgetExtension"
     ]
 
+    # Helper: obtain a JWT string from spaceship's stored token or env credentials.
+    def asc_jwt_token
+      token_obj = Spaceship::ConnectAPI.token
+      if token_obj
+        begin; return token_obj.text; rescue NoMethodError; end
+        begin; return token_obj.generate_token; rescue NoMethodError; end
+      end
+      # Fallback: generate JWT directly from environment credentials
+      require 'openssl'
+      require 'jwt'
+      key_id      = ENV["FASTLANE_KEY_ID"]
+      issuer_id   = ENV["FASTLANE_ISSUER_ID"]
+      key_content = ENV["FASTLANE_KEY"]
+      raise "Missing API credentials for JWT generation" unless key_id && issuer_id && key_content
+      private_key = OpenSSL::PKey::EC.new(key_content)
+      payload = { iss: issuer_id, iat: Time.now.to_i, exp: Time.now.to_i + 1200, aud: "appstoreconnect-v1" }
+      JWT.encode(payload, private_key, "ES256", { kid: key_id })
+    end
+
+    # Helper: make an authenticated App Store Connect REST API request.
+    # Returns [http_status_code (Integer), parsed_response_body (Hash)].
+    def asc_api_request(method, path, body = nil)
+      require 'net/http'
+      require 'uri'
+      require 'json'
+      uri  = URI("https://api.appstoreconnect.apple.com/v1/#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl     = true
+      http.read_timeout = 30
+      req = (method == :post ? Net::HTTP::Post : Net::HTTP::Get).new(uri)
+      req["Authorization"] = "Bearer #{asc_jwt_token}"
+      req["Content-Type"]  = "application/json"
+      req.body = body.to_json if body
+      resp = http.request(req)
+      [resp.code.to_i, JSON.parse(resp.body) rescue {}]
+    end
+
     app_group_id = nil
 
-    # --- Attempt 1: named AppGroup class ---
+    # --- Step 1: find or create the app group ---
     begin
+      # Try the typed AppGroup model (available in newer spaceship versions)
       all_groups = Spaceship::ConnectAPI::AppGroup.all
       existing = all_groups.find { |g| g.identifier == app_group_identifier }
       if existing
@@ -234,66 +270,94 @@ platform :ios do
         UI.success("Created app group #{app_group_identifier} (#{app_group_id})")
       end
     rescue NameError
-      # AppGroup class not present in this fastlane version – try raw API
-      UI.important("Spaceship::ConnectAPI::AppGroup not available; trying raw API...")
+      # AppGroup class not present in this fastlane/spaceship version — use direct HTTP
+      UI.important("Spaceship::ConnectAPI::AppGroup not available; using direct HTTP API...")
       begin
-        list_resp = Spaceship::ConnectAPI.get(
-          "appGroups",
-          filter: { "groupIdentifier" => app_group_identifier }
-        )
-        data = list_resp["data"] || []
-        if data.empty?
-          create_resp = Spaceship::ConnectAPI.post(
-            "appGroups",
-            body: {
-              "data" => {
-                "type" => "appGroups",
-                "attributes" => {
-                  "name" => "LoopInsights Group",
-                  "groupIdentifier" => app_group_identifier
-                }
+        require 'uri'
+        filter = URI.encode_www_form("filter[groupIdentifier]" => app_group_identifier)
+        status, resp = asc_api_request(:get, "appGroups?#{filter}")
+        data = resp["data"] || []
+        if data.any?
+          app_group_id = data.first["id"]
+          UI.message("Found existing app group via HTTP: #{app_group_identifier} (#{app_group_id})")
+        else
+          status, resp = asc_api_request(:post, "appGroups", {
+            "data" => {
+              "type" => "appGroups",
+              "attributes" => {
+                "name"            => "LoopInsights Group",
+                "groupIdentifier" => app_group_identifier
               }
             }
-          )
-          app_group_id = (create_resp["data"] || {})["id"]
-          UI.success("Created app group via raw API: #{app_group_identifier}")
-        else
-          app_group_id = data.first["id"]
-          UI.message("Found existing app group via raw API: #{app_group_identifier}")
+          })
+          if status < 300 && resp["data"]
+            app_group_id = resp["data"]["id"]
+            UI.success("Created app group via HTTP: #{app_group_identifier} (#{app_group_id})")
+          elsif (resp["errors"] || []).any? { |e| (e["code"] || "").include?("DUPLICATE") }
+            # Race condition — it already exists; fetch it
+            filter2 = URI.encode_www_form("filter[groupIdentifier]" => app_group_identifier)
+            _, resp2 = asc_api_request(:get, "appGroups?#{filter2}")
+            app_group_id = ((resp2["data"] || []).first || {})["id"]
+            UI.message("App group already existed: #{app_group_identifier} (#{app_group_id})")
+          else
+            UI.important("Failed to create app group: HTTP #{status}, #{resp.to_json}")
+          end
         end
-      rescue => raw_err
-        UI.important("Raw API call also failed: #{raw_err.message}")
+      rescue => http_err
+        UI.important("Direct HTTP API failed: #{http_err.message}")
       end
     rescue => err
       UI.important("AppGroup setup failed: #{err.message}")
     end
 
+    # --- Step 2: associate the app group with relevant bundle IDs ---
     if app_group_id
       app_group_ids_to_associate.each do |bid|
         begin
           bundle = Spaceship::ConnectAPI::BundleId.find(bid)
           next unless bundle
+
+          already_associated = false
           begin
-            existing_groups = bundle.get_app_groups.map(&:identifier)
-          rescue
-            existing_groups = []
+            already_associated = bundle.get_app_groups.any? { |g| g.identifier == app_group_identifier }
+          rescue => e
+            UI.important("Could not check app groups for #{bid}: #{e.message}")
           end
-          unless existing_groups.include?(app_group_identifier)
-            begin
-              bundle.associate_app_groups([app_group_id])
-              UI.success("Associated #{app_group_identifier} with #{bid}")
-            rescue NoMethodError
-              Spaceship::ConnectAPI.post(
-                "bundleIds/#{bundle.id}/relationships/appGroups",
-                body: { "data" => [{ "type" => "appGroups", "id" => app_group_id }] }
-              )
-              UI.success("Associated #{app_group_identifier} with #{bid} (raw API)")
-            end
-          else
+
+          if already_associated
             UI.message("#{bid} already has app group #{app_group_identifier}")
+            next
+          end
+
+          associated = false
+          begin
+            bundle.associate_app_groups([app_group_id])
+            UI.success("Associated #{app_group_identifier} with #{bid}")
+            associated = true
+          rescue NoMethodError
+            # Method unavailable in this spaceship version — fall through to HTTP
+          rescue => e
+            UI.important("associate_app_groups raised for #{bid}: #{e.message}")
+          end
+
+          unless associated
+            begin
+              status, resp = asc_api_request(
+                :post,
+                "bundleIds/#{bundle.id}/relationships/appGroups",
+                { "data" => [{ "type" => "appGroups", "id" => app_group_id }] }
+              )
+              if status < 300
+                UI.success("Associated #{app_group_identifier} with #{bid} (HTTP)")
+              else
+                UI.important("HTTP association failed for #{bid}: #{status} #{resp.to_json}")
+              end
+            rescue => http_err
+              UI.important("HTTP association failed for #{bid}: #{http_err.message}")
+            end
           end
         rescue => e
-          UI.important("Could not associate app group with #{bid}: #{e.message}")
+          UI.important("Could not process #{bid}: #{e.message}")
         end
       end
     else
