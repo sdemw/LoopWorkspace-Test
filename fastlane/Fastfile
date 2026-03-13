@@ -254,61 +254,96 @@ platform :ios do
 
     app_group_id = nil
 
-    # --- Step 1: find or create the app group ---
-    begin
-      # Try the typed AppGroup model (available in newer spaceship versions)
-      all_groups = Spaceship::ConnectAPI::AppGroup.all
-      existing = all_groups.find { |g| g.identifier == app_group_identifier }
-      if existing
-        app_group_id = existing.id
-        UI.message("Found existing app group #{app_group_identifier} (#{app_group_id})")
-      else
-        new_group = Spaceship::ConnectAPI::AppGroup.create(
-          name: "LoopInsights Group",
-          identifier: app_group_identifier
-        )
-        app_group_id = new_group.id
-        UI.success("Created app group #{app_group_identifier} (#{app_group_id})")
-      end
-    rescue NameError
-      # AppGroup class not present in this fastlane/spaceship version — use direct HTTP
-      UI.important("Spaceship::ConnectAPI::AppGroup not available; using direct HTTP API...")
+    # --- Step 1a: look for the app group via existing bundle ID associations ---
+    # This works even when the standalone appGroups endpoint requires higher permissions.
+    UI.message("Checking existing bundle ID associations for app group '#{app_group_identifier}'...")
+    app_group_ids_to_associate.each do |bid|
+      break if app_group_id
       begin
-        require 'uri'
-        filter = URI.encode_www_form("filter[groupIdentifier]" => app_group_identifier)
-        status, resp = asc_api_request(:get, "appGroups?#{filter}")
-        data = resp["data"] || []
-        if data.any?
-          app_group_id = data.first["id"]
-          UI.message("Found existing app group via HTTP: #{app_group_identifier} (#{app_group_id})")
-        else
-          status, resp = asc_api_request(:post, "appGroups", {
-            "data" => {
-              "type" => "appGroups",
-              "attributes" => {
-                "name"            => "LoopInsights Group",
-                "groupIdentifier" => app_group_identifier
-              }
-            }
-          })
-          if status < 300 && resp["data"]
-            app_group_id = resp["data"]["id"]
-            UI.success("Created app group via HTTP: #{app_group_identifier} (#{app_group_id})")
-          elsif (resp["errors"] || []).any? { |e| (e["code"] || "").include?("DUPLICATE") }
-            # Race condition — it already exists; fetch it
-            filter2 = URI.encode_www_form("filter[groupIdentifier]" => app_group_identifier)
-            _, resp2 = asc_api_request(:get, "appGroups?#{filter2}")
-            app_group_id = ((resp2["data"] || []).first || {})["id"]
-            UI.message("App group already existed: #{app_group_identifier} (#{app_group_id})")
-          else
-            UI.important("Failed to create app group: HTTP #{status}, #{resp.to_json}")
-          end
+        bundle = Spaceship::ConnectAPI::BundleId.find(bid)
+        next unless bundle
+        groups = bundle.get_app_groups rescue []
+        matching = groups.find do |g|
+          # Spaceship may expose the identifier as :group_identifier or :identifier
+          id_value = g.respond_to?(:group_identifier) ? g.group_identifier : nil
+          id_value ||= g.respond_to?(:identifier) ? g.identifier : nil
+          id_value == app_group_identifier
         end
-      rescue => http_err
-        UI.important("Direct HTTP API failed: #{http_err.message}")
+        if matching
+          app_group_id = matching.id
+          UI.message("Found app group '#{app_group_identifier}' on #{bid}: id=#{app_group_id}")
+        end
+      rescue => e
+        UI.important("Could not check existing app groups on #{bid}: #{e.message}")
       end
-    rescue => err
-      UI.important("AppGroup setup failed: #{err.message}")
+    end
+
+    # --- Step 1b: find or create via API if not found above ---
+    unless app_group_id
+      begin
+        # Try the typed AppGroup model (available in newer spaceship versions)
+        all_groups = Spaceship::ConnectAPI::AppGroup.all
+        existing = all_groups.find { |g| g.identifier == app_group_identifier }
+        if existing
+          app_group_id = existing.id
+          UI.message("Found existing app group #{app_group_identifier} (#{app_group_id})")
+        else
+          new_group = Spaceship::ConnectAPI::AppGroup.create(
+            name: "LoopInsights Group",
+            identifier: app_group_identifier
+          )
+          app_group_id = new_group.id
+          UI.success("Created app group #{app_group_identifier} (#{app_group_id})")
+        end
+      rescue NameError
+        # AppGroup class not present in this fastlane/spaceship version — use direct HTTP
+        UI.important("Spaceship::ConnectAPI::AppGroup not available; using HTTP API...")
+        begin
+          require 'uri'
+          # Use raw brackets in the filter (not percent-encoded) — some API versions require this
+          encoded_id = URI.encode_www_form_component(app_group_identifier)
+          status, resp = asc_api_request(:get, "appGroups?filter[groupIdentifier]=#{encoded_id}")
+          UI.important("GET appGroups → HTTP #{status}, data count: #{(resp['data'] || []).size}")
+          data = resp["data"] || []
+          if data.any?
+            app_group_id = data.first["id"]
+            UI.message("Found existing app group via HTTP: #{app_group_identifier} (#{app_group_id})")
+          else
+            UI.important("App group not found via GET — attempting POST to create...")
+            status, resp = asc_api_request(:post, "appGroups", {
+              "data" => {
+                "type" => "appGroups",
+                "attributes" => {
+                  "name"            => "LoopInsights Group",
+                  "groupIdentifier" => app_group_identifier
+                }
+              }
+            })
+            UI.important("POST appGroups → HTTP #{status}: #{resp.to_json}")
+            if status < 300 && resp["data"]
+              app_group_id = resp["data"]["id"]
+              UI.success("Created app group via HTTP: #{app_group_identifier} (#{app_group_id})")
+            elsif status == 403
+              UI.error("HTTP 403: API key lacks Admin permission to create app groups.")
+              UI.error("Please create '#{app_group_identifier}' manually in the Apple Developer Portal.")
+            elsif (resp["errors"] || []).any? { |e| (e["code"] || "").include?("DUPLICATE") }
+              # Group already exists — re-fetch it
+              UI.important("App group already exists (DUPLICATE); re-fetching...")
+              _, resp2 = asc_api_request(:get, "appGroups?filter[groupIdentifier]=#{encoded_id}")
+              UI.important("Re-fetch HTTP #{_}: #{resp2.to_json}")
+              app_group_id = ((resp2["data"] || []).first || {})["id"]
+              UI.message("App group re-fetched: #{app_group_identifier} (#{app_group_id})")
+            else
+              UI.important("Failed to create app group: HTTP #{status} — #{resp.to_json}")
+            end
+          end
+        rescue => http_err
+          UI.important("HTTP API failed: #{http_err.message}")
+          UI.important(http_err.backtrace.first(3).join("\n"))
+        end
+      rescue => err
+        UI.important("AppGroup setup failed: #{err.message}")
+      end
     end
 
     # --- Step 2: associate the app group with relevant bundle IDs ---
@@ -322,7 +357,11 @@ platform :ios do
 
         already_associated = false
         begin
-          already_associated = bundle.get_app_groups.any? { |g| g.identifier == app_group_identifier }
+          already_associated = bundle.get_app_groups.any? do |g|
+            id_value = g.respond_to?(:group_identifier) ? g.group_identifier : nil
+            id_value ||= g.respond_to?(:identifier) ? g.identifier : nil
+            id_value == app_group_identifier
+          end
         rescue => e
           UI.important("Could not check app groups for #{bid}: #{e.message}")
         end
