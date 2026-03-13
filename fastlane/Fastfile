@@ -248,7 +248,8 @@ platform :ios do
       req["Content-Type"]  = "application/json"
       req.body = body.to_json if body
       resp = http.request(req)
-      [resp.code.to_i, JSON.parse(resp.body) rescue {}]
+      parsed = begin; JSON.parse(resp.body); rescue; {}; end
+      [resp.code.to_i, parsed]
     end
 
     app_group_id = nil
