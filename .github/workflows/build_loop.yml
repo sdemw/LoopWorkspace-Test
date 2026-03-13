@@ -58,6 +58,11 @@ jobs:
         run: |
           sed -i "" 's|MAIN_APP_DISPLAY_NAME = Loop|MAIN_APP_DISPLAY_NAME = LoopInsights|g' Loop/Loop.xcconfig
           sed -i "" 's|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopkit|MAIN_APP_BUNDLE_IDENTIFIER = com.${DEVELOPMENT_TEAM}.loopinsights|g' Loop/Loop.xcconfig
+          # Update app group in all entitlements files to match provisioning profiles
+          find Loop -name "*.entitlements" -print0 | xargs -0 sed -i "" \
+            's|group\.com\.$(DEVELOPMENT_TEAM)\.loopkit\.Loop|group.com.$(DEVELOPMENT_TEAM).loopinsights.LoopGroup|g'
+          find Loop -name "*.entitlements" -print0 | xargs -0 sed -i "" \
+            's|group\.com\.loopkit\.Loop|group.com.$(DEVELOPMENT_TEAM).loopinsights.LoopGroup|g'
 
       - name: Customize Loop
         run: |
