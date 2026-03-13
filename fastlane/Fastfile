@@ -314,63 +314,61 @@ platform :ios do
     # --- Step 2: associate the app group with relevant bundle IDs ---
     if app_group_id
       app_group_ids_to_associate.each do |bid|
+        bundle = Spaceship::ConnectAPI::BundleId.find(bid)
+        unless bundle
+          UI.important("Bundle ID #{bid} not found in portal, skipping app group association")
+          next
+        end
+
+        already_associated = false
         begin
-          bundle = Spaceship::ConnectAPI::BundleId.find(bid)
-          next unless bundle
-
-          already_associated = false
-          begin
-            already_associated = bundle.get_app_groups.any? { |g| g.identifier == app_group_identifier }
-          rescue => e
-            UI.important("Could not check app groups for #{bid}: #{e.message}")
-          end
-
-          if already_associated
-            UI.message("#{bid} already has app group #{app_group_identifier}")
-            next
-          end
-
-          associated = false
-          begin
-            bundle.associate_app_groups([app_group_id])
-            UI.success("Associated #{app_group_identifier} with #{bid}")
-            associated = true
-          rescue NoMethodError
-            # Method unavailable in this spaceship version — fall through to HTTP
-          rescue => e
-            UI.important("associate_app_groups raised for #{bid}: #{e.message}")
-          end
-
-          unless associated
-            begin
-              status, resp = asc_api_request(
-                :post,
-                "bundleIds/#{bundle.id}/relationships/appGroups",
-                { "data" => [{ "type" => "appGroups", "id" => app_group_id }] }
-              )
-              if status < 300
-                UI.success("Associated #{app_group_identifier} with #{bid} (HTTP)")
-              else
-                UI.important("HTTP association failed for #{bid}: #{status} #{resp.to_json}")
-              end
-            rescue => http_err
-              UI.important("HTTP association failed for #{bid}: #{http_err.message}")
-            end
-          end
+          already_associated = bundle.get_app_groups.any? { |g| g.identifier == app_group_identifier }
         rescue => e
-          UI.important("Could not process #{bid}: #{e.message}")
+          UI.important("Could not check app groups for #{bid}: #{e.message}")
+        end
+
+        if already_associated
+          UI.message("#{bid} already has app group #{app_group_identifier}")
+          next
+        end
+
+        associated = false
+        begin
+          bundle.associate_app_groups([app_group_id])
+          UI.success("Associated #{app_group_identifier} with #{bid}")
+          associated = true
+        rescue NoMethodError
+          # Method unavailable in this spaceship version — fall through to HTTP
+        rescue => e
+          UI.important("Spaceship associate_app_groups failed for #{bid}: #{e.message}")
+        end
+
+        unless associated
+          status, resp = asc_api_request(
+            :post,
+            "bundleIds/#{bundle.id}/relationships/appGroups",
+            { "data" => [{ "type" => "appGroups", "id" => app_group_id }] }
+          )
+          # 409 = conflict (already associated) — treat as success
+          if status < 300 || status == 409
+            UI.success("Associated #{app_group_identifier} with #{bid} via HTTP")
+            associated = true
+          else
+            raise "Failed to associate '#{app_group_identifier}' with '#{bid}': HTTP #{status} — #{resp.to_json}"
+          end
         end
       end
     else
-      UI.important("")
-      UI.important("⚠️  Could not automatically create/associate the app group.")
-      UI.important("   Please manually perform the following steps in the Apple Developer Portal:")
-      UI.important("   1. Go to Certificates, Identifiers & Profiles → Identifiers → App Groups")
-      UI.important("   2. Create a new App Group with identifier: #{app_group_identifier}")
-      UI.important("   3. Edit each of these bundle IDs and add the app group above:")
-      app_group_ids_to_associate.each { |bid| UI.important("      - #{bid}") }
-      UI.important("   Then re-run the identifiers and build_loop workflows.")
-      UI.important("")
+      UI.error("")
+      UI.error("❌ Could not create or find app group '#{app_group_identifier}'.")
+      UI.error("   Please manually create this App Group in the Apple Developer Portal:")
+      UI.error("   1. Go to Certificates, Identifiers & Profiles → Identifiers → App Groups")
+      UI.error("   2. Create a new App Group with identifier: #{app_group_identifier}")
+      UI.error("   3. Edit each of these bundle IDs and associate the app group:")
+      app_group_ids_to_associate.each { |bid| UI.error("      - #{bid}") }
+      UI.error("   Then re-run the '2. Add Identifiers' workflow.")
+      UI.error("")
+      raise "App group '#{app_group_identifier}' could not be created or found. Manual intervention required — see instructions above."
     end
 
   end
