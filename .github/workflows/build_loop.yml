@@ -50,7 +50,7 @@ jobs:
         run: |
           cd Loop
           git remote set-url origin https://github.com/TaylorJPatterson/Loop.git
-          git fetch origin feat/LoopInsights
+          git fetch origin feat/AllFeatures
           git checkout FETCH_HEAD
           cd ..
 
